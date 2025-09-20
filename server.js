@@ -4,53 +4,66 @@ import fetch from "node-fetch";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Biar req.body selalu ada jika POST/PUT
+// Target host tunggal
+const TARGET_HOST = "https://fhlsport121.fgs37g8.xyz";
+
+// Supaya req.body tetap ada
 app.use(express.text({ type: "*/*" }));
 
-const hosts = {
-  twnx1: "https://twnx1-cf.boblcfwudz421.com",
-  twnx2: "https://twnx2-cf.boblcfwudz421.com",
-  twnx3: "https://twnx3-cf.boblcfwudz421.com",
-};
+// Handle preflight CORS
+app.options("*", (req, res) => {
+  res.set({
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "*",
+  });
+  res.sendStatus(204);
+});
 
+// Halaman root biar nggak 404
+app.get("/", (req, res) => {
+  res.send("✅ Proxy is running! Gunakan path misalnya: /hls/stream.m3u8");
+});
+
+// Proxy semua request lain
 app.all("*", async (req, res) => {
   try {
-    const pathParts = req.path.split("/");
-    const prefix = pathParts[1];
-    const host = hosts[prefix];
-    if (!host) return res.status(400).send("Invalid prefix");
+    const path = req.url.startsWith("/") ? req.url : `/${req.url}`;
+    const targetUrl = TARGET_HOST + path;
 
-    // Gabungkan path + query string dengan aman
-    const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
-    const targetUrl = host + "/" + pathParts.slice(2).join("/") + query;
+    // Buat headers
+    const headers = {
+      ...req.headers,
+      "user-agent": req.get("user-agent") || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+      referer: "https://morgan.h3eaulperhapsfuzkhurried.shop/",
+      origin: "https://morgan.h3eaulperhapsfuzkhurried.shop",
+      cookie:
+        "",
+    };
 
+    delete headers["host"]; // jangan forward host lama
+
+    // Request ke upstream
     const upstream = await fetch(targetUrl, {
       method: req.method,
-      headers: {
-        "User-Agent": req.get("User-Agent") || "Mozilla/5.0",
-        Referer: "https://ppdd02.playerktidfintkd.shop/",
-        Origin: "https://ppdd02.playerktidfintkd.shop",
-        Cookie: "vc_ts=1757037722532; show_link=false",
-      },
+      headers,
       body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
     });
 
-    // Set CORS
+    // Tambah CORS headers
     res.set({
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "*",
     });
 
-    // Pipe streaming langsung
-    if (upstream.body && upstream.body.pipe) {
+    // Forward status + headers
+    res.writeHead(upstream.status, Object.fromEntries(upstream.headers));
+
+    if (upstream.body) {
       upstream.body.pipe(res);
-      upstream.body.on("error", (err) => {
-        console.error("Stream error:", err);
-        res.end();
-      });
     } else {
-      res.status(500).send("Upstream body is empty");
+      res.end();
     }
   } catch (err) {
     console.error("Proxy error:", err);
@@ -58,4 +71,6 @@ app.all("*", async (req, res) => {
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => console.log(`Proxy running on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () =>
+  console.log(`✅ Proxy running on port ${PORT}`)
+);
